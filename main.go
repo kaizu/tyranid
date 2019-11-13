@@ -6,8 +6,8 @@ import (
     "io"
     "fmt"
     "strconv"
+    "strings"
 )
-
 
 // (1) Operon name
 // (2) First gene-position left
@@ -22,9 +22,9 @@ type Operon struct {
     Name string
     Left int
     Right int
-    Strand string
+    Strand bool
     NumOfGenes int
-    GeneNames string
+    GeneNames []string
     Evidence string
     Confidence string
 }
@@ -42,16 +42,20 @@ func ParseOperon(row []string) (Operon, error) {
         return Operon{}, err
     }
     operon.Right = right
-    if row[3] != "forward" && row[3] != "reverse" {
+    if row[3] == "forward" || row[3] == "reverse" {
+        operon.Strand = (row[3] == "forward")
+    } else {
         return Operon{}, fmt.Errorf("Invbalid DNA strand was given [%s].", row[3])
     }
-    operon.Strand = row[3]
     n, err := strconv.Atoi(row[4])
     if err != nil {
         return Operon{}, err
     }
     operon.NumOfGenes = n
-    operon.GeneNames = row[5]
+    operon.GeneNames = strings.Split(row[5], ",")
+    if n != len(operon.GeneNames) {
+        return Operon{}, fmt.Errorf("The number of gene names doesn't match [%d != %d]", n, len(operon.GeneNames))
+    }
     operon.Evidence = row[6]
     operon.Confidence = row[7]
     return operon, nil
@@ -59,7 +63,7 @@ func ParseOperon(row []string) (Operon, error) {
 
 func GenerateFeatureYaml(operon *Operon) string {
     location := fmt.Sprintf("%d..%d", operon.Left, operon.Right)
-    if operon.Strand == "reverse" {
+    if !operon.Strand {
         location = fmt.Sprintf("complement(%s)", location)
     }
     return fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
