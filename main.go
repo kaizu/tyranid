@@ -3,11 +3,15 @@ package main
 import (
     "encoding/csv"
     "os"
+    "bytes"
     "io"
     "fmt"
     "strconv"
     "strings"
     "net/http"
+
+    "encoding/json"
+    "github.com/go-yaml/yaml"
 
     "github.com/ktnyt/gods"
     "github.com/ktnyt/gt1"
@@ -65,12 +69,12 @@ func parseOperon(row []string) (*Operon, error) {
     return &operon, nil
 }
 
-func generateOperonYaml(operon *Operon) string {
+func formatOperonYaml(operon *Operon) string {
     location := fmt.Sprintf("%d..%d", operon.Left, operon.Right)
     if !operon.Strand {
         location = fmt.Sprintf("complement(%s)", location)
     }
-    return fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
+    return fmt.Sprintf("- key: operon\n  location: %s\n  qualifiers:\n  - - operon\n    - %s\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
 }
 
 func parseFeature(operon *Operon) *gt1.Feature {
@@ -79,8 +83,51 @@ func parseFeature(operon *Operon) *gt1.Feature {
         location = gt1.NewComplementLocation(location)
     }
     qfs := gods.NewOrdered()
+    qfs.Add("operon", operon.Name)
     qfs.Add("db_xref", fmt.Sprintf("REGULONDB:%s", operon.Name))
-    return gt1.NewFeature(operon.Name, location, qfs)
+    return gt1.NewFeature("operon", location, qfs)
+}
+
+// Almost same with gt1.featureIO
+type FeatureIO struct {
+    Key string `yaml:"key" json:"key"`
+    Location string `yaml:"location" json:"location"`
+    Qualifiers [][2]string `yaml:"qualifiers" json:"qualifiers"`
+}
+
+func NewFeatureIO(feature *gt1.Feature) *FeatureIO {
+    qfs := make([][2]string, feature.Qualifiers().Len())
+    for i, item := range feature.Qualifiers().Iter() {
+        qfs[i][0] = item.Key
+        qfs[i][1] = item.Value
+    }
+    return &FeatureIO{feature.Key(), feature.Location().Format(), qfs}
+}
+
+func formatFeatureJson(feature *gt1.Feature) (string, error) {
+    fmt := NewFeatureIO(feature)
+
+    buf, err := json.Marshal([]FeatureIO{fmt})
+    if err != nil {
+        return "", err
+    }
+
+    var newbuf bytes.Buffer
+    err = json.Indent(&newbuf, buf, "", "  ")
+    if err != nil {
+        return "", err
+    }
+    return newbuf.String(), nil
+}
+
+func formatFeatureYaml(feature *gt1.Feature) (string, error) {
+    fmt := NewFeatureIO(feature)
+
+    buf, err := yaml.Marshal([]FeatureIO{fmt})
+    if err != nil {
+        return "", err
+    }
+    return string(buf), nil
 }
 
 func readFeatureTable(filename string) (*gt1.FeatureTable, error) {
@@ -147,7 +194,6 @@ func main() {
     }
 
     // features, _ := readFeatureTable("OperonSet.txt")
-    // fmt.Printf("%d features are read.", features.Len())
 
     file, err := os.Open("OperonSet.txt")
     if err != nil {
@@ -170,8 +216,18 @@ func main() {
         if err != nil {
             panic(err)
         }
-        if operon, err := parseOperon(line); err == nil {
-            fmt.Printf(generateOperonYaml(operon))
+
+        operon, err := parseOperon(line)
+        if err != nil {
+            continue
         }
+
+        // fmt.Printf(formatOperonYaml(operon))
+        // res, err := formatFeatureYaml(parseFeature(operon))
+        res, err := formatFeatureJson(parseFeature(operon))
+        if err != nil {
+            panic(err)
+        }
+        fmt.Println(res)
     }
 }
