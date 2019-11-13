@@ -5,17 +5,64 @@ import (
     "os"
     "io"
     "fmt"
+    "strconv"
 )
 
-func GenerateFeatureYaml(row []string) (string, error) {
-    location := fmt.Sprintf("%s..%s", row[1], row[2])
-    if row[3] == "reverse" {
-        location = fmt.Sprintf("complement(%s)", location)
-    } else if row[3] != "forward" {
-        return "", fmt.Errorf("Invbalid DNA strand was given [%s].", row[3])
+
+// (1) Operon name
+// (2) First gene-position left
+// (3) Last gene-position right
+// (4) DNA strand where the operon is coded
+// (5) Number of genes contained in the operon
+// (6) Name or Blattner number of the gene(s) contained in the operon
+// (7) Evidence that support the existence of the operon's TUs
+// (8) Evidence confidence level (Confirmed, Strong, Weak)
+
+type Operon struct {
+    Name string
+    Left int
+    Right int
+    Strand string
+    NumOfGenes int
+    GeneNames string
+    Evidence string
+    Confidence string
+}
+
+func ParseOperon(row []string) (Operon, error) {
+    var operon Operon
+    operon.Name = row[0]
+    left, err := strconv.Atoi(row[1])
+    if err != nil {
+        return Operon{}, err
     }
-    yaml := fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, row[0], row[0])
-    return yaml, nil
+    operon.Left = left
+    right, err := strconv.Atoi(row[1])
+    if err != nil {
+        return Operon{}, err
+    }
+    operon.Right = right
+    if row[3] != "forward" && row[3] != "reverse" {
+        return Operon{}, fmt.Errorf("Invbalid DNA strand was given [%s].", row[3])
+    }
+    operon.Strand = row[3]
+    n, err := strconv.Atoi(row[4])
+    if err != nil {
+        return Operon{}, err
+    }
+    operon.NumOfGenes = n
+    operon.GeneNames = row[5]
+    operon.Evidence = row[6]
+    operon.Confidence = row[7]
+    return operon, nil
+}
+
+func GenerateFeatureYaml(operon *Operon) string {
+    location := fmt.Sprintf("%d..%d", operon.Left, operon.Right)
+    if operon.Strand == "reverse" {
+        location = fmt.Sprintf("complement(%s)", location)
+    }
+    return fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
 }
 
 func main() {
@@ -25,14 +72,12 @@ func main() {
     }
     defer file.Close()
 
-
     reader := csv.NewReader(file)
     reader.Comma = '\t'
     reader.Comment = '#'
     reader.FieldsPerRecord = 8
 
     var line []string
-    var yml string
 
     for {
         line, err = reader.Read()
@@ -42,9 +87,8 @@ func main() {
         if err != nil {
             panic(err)
         }
-        yml, err = GenerateFeatureYaml(line)
-        if err == nil {
-            fmt.Printf(yml)
+        if operon, err := ParseOperon(line); err == nil {
+            fmt.Printf(GenerateFeatureYaml(&operon))
         }
     }
 }
