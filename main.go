@@ -33,36 +33,36 @@ type Operon struct {
     Confidence string
 }
 
-func parseOperon(row []string) (Operon, error) {
+func parseOperon(row []string) (*Operon, error) {
     var operon Operon
     operon.Name = row[0]
     left, err := strconv.Atoi(row[1])
     if err != nil {
-        return Operon{}, err
+        return nil, err
     }
     operon.Left = left
     right, err := strconv.Atoi(row[1])
     if err != nil {
-        return Operon{}, err
+        return nil, err
     }
     operon.Right = right
     if row[3] == "forward" || row[3] == "reverse" {
         operon.Strand = (row[3] == "forward")
     } else {
-        return Operon{}, fmt.Errorf("Invbalid DNA strand was given [%s].", row[3])
+        return nil, fmt.Errorf("Invbalid DNA strand was given [%s].", row[3])
     }
     n, err := strconv.Atoi(row[4])
     if err != nil {
-        return Operon{}, err
+        return nil, err
     }
     operon.NumOfGenes = n
     operon.GeneNames = strings.Split(row[5], ",")
     if n != len(operon.GeneNames) {
-        return Operon{}, fmt.Errorf("The number of gene names doesn't match [%d != %d]", n, len(operon.GeneNames))
+        return nil, fmt.Errorf("The number of gene names doesn't match [%d != %d]", n, len(operon.GeneNames))
     }
     operon.Evidence = row[6]
     operon.Confidence = row[7]
-    return operon, nil
+    return &operon, nil
 }
 
 func generateOperonYaml(operon *Operon) string {
@@ -73,14 +73,45 @@ func generateOperonYaml(operon *Operon) string {
     return fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
 }
 
-func parseFeature(operon *Operon) (*gt1.Feature, error) {
+func parseFeature(operon *Operon) *gt1.Feature {
     var location gt1.Location = gt1.NewRangeLocation(operon.Left, operon.Right)
     if !operon.Strand {
         location = gt1.NewComplementLocation(location)
     }
     qfs := gods.NewOrdered()
     qfs.Add("db_xref", fmt.Sprintf("REGULONDB:%s", operon.Name))
-    return gt1.NewFeature(operon.Name, location, qfs), nil
+    return gt1.NewFeature(operon.Name, location, qfs)
+}
+
+func readFeatureTable(filename string) (*gt1.FeatureTable, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    reader := csv.NewReader(file)
+    reader.Comma = '\t'
+    reader.Comment = '#'
+    reader.FieldsPerRecord = 8
+
+    features := gt1.NewFeatureTable()
+
+    var line []string
+
+    for {
+        line, err = reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, err
+        }
+        if operon, err := parseOperon(line); err == nil {
+            features.Append(parseFeature(operon))
+        }
+    }
+    return features, nil
 }
 
 func isExist(filename string) bool {
@@ -115,6 +146,9 @@ func main() {
         panic(err)
     }
 
+    // features, _ := readFeatureTable("OperonSet.txt")
+    // fmt.Printf("%d features are read.", features.Len())
+
     file, err := os.Open("OperonSet.txt")
     if err != nil {
         panic(err)
@@ -137,7 +171,7 @@ func main() {
             panic(err)
         }
         if operon, err := parseOperon(line); err == nil {
-            fmt.Printf(generateOperonYaml(&operon))
+            fmt.Printf(generateOperonYaml(operon))
         }
     }
 }
