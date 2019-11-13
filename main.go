@@ -8,6 +8,9 @@ import (
     "strconv"
     "strings"
     "net/http"
+
+    "github.com/ktnyt/gods"
+    "github.com/ktnyt/gt1"
 )
 
 // (1) Operon name
@@ -62,12 +65,22 @@ func parseOperon(row []string) (Operon, error) {
     return operon, nil
 }
 
-func generateFeatureYaml(operon *Operon) string {
+func generateOperonYaml(operon *Operon) string {
     location := fmt.Sprintf("%d..%d", operon.Left, operon.Right)
     if !operon.Strand {
         location = fmt.Sprintf("complement(%s)", location)
     }
     return fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
+}
+
+func parseFeature(operon *Operon) (*gt1.Feature, error) {
+    var location gt1.Location = gt1.NewRangeLocation(operon.Left, operon.Right)
+    if !operon.Strand {
+        location = gt1.NewComplementLocation(location)
+    }
+    qfs := gods.NewOrdered()
+    qfs.Add("db_xref", fmt.Sprintf("REGULONDB:%s", operon.Name))
+    return gt1.NewFeature(operon.Name, location, qfs), nil
 }
 
 func isExist(filename string) bool {
@@ -124,7 +137,7 @@ func main() {
             panic(err)
         }
         if operon, err := parseOperon(line); err == nil {
-            fmt.Printf(generateFeatureYaml(&operon))
+            fmt.Printf(generateOperonYaml(&operon))
         }
     }
 }
