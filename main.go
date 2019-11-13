@@ -7,6 +7,7 @@ import (
     "fmt"
     "strconv"
     "strings"
+    "net/http"
 )
 
 // (1) Operon name
@@ -29,7 +30,7 @@ type Operon struct {
     Confidence string
 }
 
-func ParseOperon(row []string) (Operon, error) {
+func parseOperon(row []string) (Operon, error) {
     var operon Operon
     operon.Name = row[0]
     left, err := strconv.Atoi(row[1])
@@ -61,7 +62,7 @@ func ParseOperon(row []string) (Operon, error) {
     return operon, nil
 }
 
-func GenerateFeatureYaml(operon *Operon) string {
+func generateFeatureYaml(operon *Operon) string {
     location := fmt.Sprintf("%d..%d", operon.Left, operon.Right)
     if !operon.Strand {
         location = fmt.Sprintf("complement(%s)", location)
@@ -69,7 +70,38 @@ func GenerateFeatureYaml(operon *Operon) string {
     return fmt.Sprintf("- key: operon\n  location: %s\n  operon: %s\n  qualifiers:\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
 }
 
+func isExist(filename string) bool {
+    _, err := os.Stat(filename)
+    return err == nil
+}
+
+func fetchURL(filename string, url string) error {
+    if isExist(filename) {
+        return nil
+    }
+
+    resp, err := http.Get(url)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    out, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer out.Close()
+
+    _, err = io.Copy(out, resp.Body)
+    return err
+}
+
 func main() {
+    err := fetchURL("OperonSet.txt", "http://regulondb.ccg.unam.mx/menu/download/datasets/files/OperonSet.txt")
+    if err != nil {
+        panic(err)
+    }
+
     file, err := os.Open("OperonSet.txt")
     if err != nil {
         panic(err)
@@ -91,8 +123,8 @@ func main() {
         if err != nil {
             panic(err)
         }
-        if operon, err := ParseOperon(line); err == nil {
-            fmt.Printf(GenerateFeatureYaml(&operon))
+        if operon, err := parseOperon(line); err == nil {
+            fmt.Printf(generateFeatureYaml(&operon))
         }
     }
 }
