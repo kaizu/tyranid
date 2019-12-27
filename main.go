@@ -1,7 +1,7 @@
 package main
 
 import (
-    "encoding/csv"
+    // "encoding/csv"  //XXX: Rather use ./csv
     "os"
     "bytes"
     "io"
@@ -15,6 +15,8 @@ import (
 
     "github.com/ktnyt/gods"
     "github.com/ktnyt/gt1"
+
+    "./csv"
 )
 
 // (1) Operon name
@@ -130,36 +132,36 @@ func formatFeatureYaml(feature *gt1.Feature) (string, error) {
     return string(buf), nil
 }
 
-func readFeatureTable(filename string) (*gt1.FeatureTable, error) {
-    file, err := os.Open(filename)
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
-
-    reader := csv.NewReader(file)
-    reader.Comma = '\t'
-    reader.Comment = '#'
-    reader.FieldsPerRecord = 8
-
-    features := gt1.NewFeatureTable()
-
-    var line []string
-
-    for {
-        line, err = reader.Read()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return nil, err
-        }
-        if operon, err := parseOperon(line); err == nil {
-            features.Append(parseFeature(operon))
-        }
-    }
-    return features, nil
-}
+// func readFeatureTable(filename string) (*gt1.FeatureTable, error) {
+//     file, err := os.Open(filename)
+//     if err != nil {
+//         return nil, err
+//     }
+//     defer file.Close()
+// 
+//     reader := csv.NewReader(file)
+//     reader.Comma = '\t'
+//     reader.Comment = '#'
+//     reader.FieldsPerRecord = 8
+// 
+//     features := gt1.NewFeatureTable()
+// 
+//     var line []string
+// 
+//     for {
+//         line, err = reader.Read()
+//         if err == io.EOF {
+//             break
+//         }
+//         if err != nil {
+//             return nil, err
+//         }
+//         if operon, err := parseOperon(line); err == nil {
+//             features.Append(parseFeature(operon))
+//         }
+//     }
+//     return features, nil
+// }
 
 func isExist(filename string) bool {
     _, err := os.Stat(filename)
@@ -201,23 +203,13 @@ func main() {
     }
     defer file.Close()
 
-    reader := csv.NewReader(file)
-    reader.Comma = '\t'
-    reader.Comment = '#'
-    reader.FieldsPerRecord = 8
-
-    var line []string
-
+    scanner := csv.NewScanner(file, csv.Comma('\t'), csv.Comment('#'), csv.FieldsPerRecord(8))
     for {
-        line, err = reader.Read()
-        if err == io.EOF {
+        var suc bool = scanner.Scan()
+        if !suc {
             break
         }
-        if err != nil {
-            panic(err)
-        }
-
-        operon, err := parseOperon(line)
+        operon, err := parseOperon(scanner.Record())
         if err != nil {
             continue
         }
