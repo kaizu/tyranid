@@ -20,10 +20,12 @@ type Scanner struct {
 func NewScanner(reader io.Reader, options ...Option) *Scanner {
 	return new(Scanner).initialize(reader).configure(options)
 }
+
 func (this *Scanner) initialize(reader io.Reader) *Scanner {
 	this.reader = csv.NewReader(reader)
 	return this
 }
+
 func (this *Scanner) configure(options []Option) *Scanner {
 	for _, configure := range options {
 		configure(this)

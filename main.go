@@ -1,7 +1,6 @@
 package main
 
 import (
-    // "encoding/csv"  //XXX: Rather use ./csv
     "os"
     "bytes"
     "io"
@@ -19,6 +18,32 @@ import (
     "./csv"
 )
 
+func isExist(filename string) bool {
+    _, err := os.Stat(filename)
+    return err == nil
+}
+
+func fetchURL(filename string, url string) error {
+    if isExist(filename) {
+        return nil
+    }
+
+    resp, err := http.Get(url)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    out, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer out.Close()
+
+    _, err = io.Copy(out, resp.Body)
+    return err
+}
+
 // (1) Operon name
 // (2) First gene-position left
 // (3) Last gene-position right
@@ -27,7 +52,6 @@ import (
 // (6) Name or Blattner number of the gene(s) contained in the operon
 // (7) Evidence that support the existence of the operon's TUs
 // (8) Evidence confidence level (Confirmed, Strong, Weak)
-
 type Operon struct {
     Name string
     Left int
@@ -71,12 +95,46 @@ func parseOperon(row []string) (*Operon, error) {
     return &operon, nil
 }
 
-func formatOperonYaml(operon *Operon) string {
-    location := fmt.Sprintf("%d..%d", operon.Left, operon.Right)
-    if !operon.Strand {
-        location = fmt.Sprintf("complement(%s)", location)
+type Scanner struct {
+    scanner *csv.Scanner
+    record *Operon
+    err error
+    continueOnError bool
+}
+
+func NewScanner(reader io.Reader) *Scanner {
+    return new(Scanner).initialize(reader)
+}
+
+func (this *Scanner) initialize(reader io.Reader) *Scanner {
+    this.scanner = csv.NewScanner(reader, csv.Comma('\t'), csv.Comment('#'), csv.FieldsPerRecord(8))
+    return this
+}
+
+func (this *Scanner) Scan() bool {
+    var suc bool = this.scanner.Scan()
+    this.err = this.scanner.Error()
+    if !suc {
+        return false
     }
-    return fmt.Sprintf("- key: operon\n  location: %s\n  qualifiers:\n  - - operon\n    - %s\n  - - db_xref\n    - REGULONDB:%s\n", location, operon.Name, operon.Name)
+
+    if this.err != nil {
+        return true
+    }
+
+    this.record, this.err = parseOperon(this.scanner.Record())
+    return true
+}
+
+func (this *Scanner) Record() *Operon {
+	return this.record
+}
+
+func (this *Scanner) Error() error {
+	if this.err == io.EOF {
+		return nil
+	}
+	return this.err
 }
 
 func parseFeature(operon *Operon) *gt1.Feature {
@@ -132,70 +190,11 @@ func formatFeatureYaml(feature *gt1.Feature) (string, error) {
     return string(buf), nil
 }
 
-// func readFeatureTable(filename string) (*gt1.FeatureTable, error) {
-//     file, err := os.Open(filename)
-//     if err != nil {
-//         return nil, err
-//     }
-//     defer file.Close()
-// 
-//     reader := csv.NewReader(file)
-//     reader.Comma = '\t'
-//     reader.Comment = '#'
-//     reader.FieldsPerRecord = 8
-// 
-//     features := gt1.NewFeatureTable()
-// 
-//     var line []string
-// 
-//     for {
-//         line, err = reader.Read()
-//         if err == io.EOF {
-//             break
-//         }
-//         if err != nil {
-//             return nil, err
-//         }
-//         if operon, err := parseOperon(line); err == nil {
-//             features.Append(parseFeature(operon))
-//         }
-//     }
-//     return features, nil
-// }
-
-func isExist(filename string) bool {
-    _, err := os.Stat(filename)
-    return err == nil
-}
-
-func fetchURL(filename string, url string) error {
-    if isExist(filename) {
-        return nil
-    }
-
-    resp, err := http.Get(url)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-
-    out, err := os.Create(filename)
-    if err != nil {
-        return err
-    }
-    defer out.Close()
-
-    _, err = io.Copy(out, resp.Body)
-    return err
-}
-
 func main() {
     err := fetchURL("OperonSet.txt", "http://regulondb.ccg.unam.mx/menu/download/datasets/files/OperonSet.txt")
     if err != nil {
         panic(err)
     }
-
-    // features, _ := readFeatureTable("OperonSet.txt")
 
     file, err := os.Open("OperonSet.txt")
     if err != nil {
@@ -203,20 +202,16 @@ func main() {
     }
     defer file.Close()
 
-    scanner := csv.NewScanner(file, csv.Comma('\t'), csv.Comment('#'), csv.FieldsPerRecord(8))
+    scanner := NewScanner(file)
     for {
-        var suc bool = scanner.Scan()
-        if !suc {
+        if suc := scanner.Scan(); !suc {
             break
         }
-        operon, err := parseOperon(scanner.Record())
-        if err != nil {
+        if err = scanner.Error(); err != nil {
             continue
         }
-
-        // fmt.Printf(formatOperonYaml(operon))
-        // res, err := formatFeatureYaml(parseFeature(operon))
-        res, err := formatFeatureJson(parseFeature(operon))
+        // res, err := formatFeatureYaml(parseFeature(scanner.Record()))
+        res, err := formatFeatureJson(parseFeature(scanner.Record()))
         if err != nil {
             panic(err)
         }
