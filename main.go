@@ -210,8 +210,9 @@ func main() {
         if err = scanner.Error(); err != nil {
             continue
         }
-        // res, err := formatFeatureYaml(parseFeature(scanner.Record()))
-        res, err := formatFeatureJson(parseFeature(scanner.Record()))
+        feature := parseFeature(scanner.Record())
+        // res, err := formatFeatureYaml(feature)
+        res, err := formatFeatureJson(feature)
         if err != nil {
             panic(err)
         }
