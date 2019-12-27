@@ -107,7 +107,7 @@ func NewFeatureIO(feature *gt1.Feature) *FeatureIO {
 func formatFeatureJson(feature *gt1.Feature) (string, error) {
     fmt := NewFeatureIO(feature)
 
-    buf, err := json.Marshal([]FeatureIO{fmt})
+    buf, err := json.Marshal([]*FeatureIO{fmt})
     if err != nil {
         return "", err
     }
@@ -123,7 +123,7 @@ func formatFeatureJson(feature *gt1.Feature) (string, error) {
 func formatFeatureYaml(feature *gt1.Feature) (string, error) {
     fmt := NewFeatureIO(feature)
 
-    buf, err := yaml.Marshal([]FeatureIO{fmt})
+    buf, err := yaml.Marshal([]*FeatureIO{fmt})
     if err != nil {
         return "", err
     }
